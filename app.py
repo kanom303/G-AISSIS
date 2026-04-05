@@ -16,7 +16,7 @@ def load_system():
 model, vectorizer = load_system()
 
 # 3. จัดหน้าตาเว็บแอป
-st.title("🤖 ระบบ AI Support เกม ")
+st.title("🤖 G-Assist ")
 st.write("ลองพิมพ์ปัญหาที่พบด้านล่าง ระบบจะจัดหมวดหมู่แจ้งปัญหา (Ticket) ให้โดยอัตโนมัติ")
 
 # กล่องรับข้อความ
