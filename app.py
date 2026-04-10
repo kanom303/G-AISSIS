@@ -235,7 +235,7 @@ if st.session_state.page == "analyze":
     
     st.markdown("---")
     
-    st.markdown("## 🤖 AI Ticket Classifier")
+    st.markdown("## 🤖 G-Assist")
     st.markdown("**ข้อความจากผู้เล่น**")
     st.markdown("💡 พิมพ์หรือวางข้อความที่ผู้เล่นแจ้งปัญหามา ระบบจะวิเคราะห์และจัดหมวดหมู่ให้โดยอัตโนมัติ")
     
