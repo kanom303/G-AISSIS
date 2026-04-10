@@ -384,22 +384,30 @@ elif st.session_state.page == "tickets":
         
         status_label = {"done": "✅ แก้ไขแล้ว", "open": "⏳ รอดำเนินการ", "review": "🔍 กำลังตรวจสอบ"}
         
-        table_data = []
-        for t in filtered_history:
+        # Display tickets with delete buttons
+        for idx, t in enumerate(filtered_history):
             status_txt = status_label.get(t["status"], "⏳ รอดำเนินการ")
-            table_data.append({
-                "Ticket ID": t['id'],
-                "ข้อความ": t['msg'],
-                "หมวดหมู่": t['category'],
-                "สถานะ": status_txt,
-                "เวลา": t['time'],
-                "วันที่": t['date'],
-            })
-        
-        if table_data:
-            st.dataframe(table_data, use_container_width=True, hide_index=True)
-        else:
-            st.info("ไม่พบ Ticket ที่ตรงกับเงื่อนไข")
+            
+            col1, col2, col3, col4, col5, col6 = st.columns([1, 2, 1.5, 1.5, 1, 0.8])
+            with col1:
+                st.markdown(f"**{t['id']}**")
+            with col2:
+                st.markdown(t['msg'])
+            with col3:
+                st.markdown(f"📂 {t['category']}")
+            with col4:
+                st.markdown(status_txt)
+            with col5:
+                st.markdown(f"🕐 {t['time']}")
+            with col6:
+                if st.button("🗑️", key=f"delete_{idx}_{t['id']}", help="ลบ Ticket นี้"):
+                    # Remove ticket from history
+                    history = [h for h in history if h['id'] != t['id']]
+                    save_history_to_csv(history)
+                    st.success(f"✅ ลบ {t['id']} เรียบร้อยแล้ว")
+                    st.rerun()
+            
+            st.divider()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE 3: SETTINGS
