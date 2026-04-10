@@ -1,5 +1,7 @@
 import streamlit as st
 import pickle
+import pandas as pd
+import os
 from pythainlp.tokenize import word_tokenize
 import datetime
 
@@ -137,6 +139,32 @@ table tr:hover td {
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CSV Database Functions
+# ─────────────────────────────────────────────────────────────────────────────
+CSV_FILE = "ticket_history.csv"
+
+def load_history_from_csv():
+    """Load ticket history from CSV file"""
+    if os.path.exists(CSV_FILE):
+        df = pd.read_csv(CSV_FILE)
+        return df.to_dict('records')
+    return []
+
+def save_history_to_csv(history):
+    """Save ticket history to CSV file"""
+    if history:
+        df = pd.DataFrame(history)
+        df.to_csv(CSV_FILE, index=False)
+
+def get_next_ticket_id():
+    """Get next ticket ID from CSV"""
+    history = load_history_from_csv()
+    if history:
+        last_id = max([int(t['id'].replace('#T-', '')) for t in history])
+        return f"#T-{last_id + 1:04d}"
+    return "#T-0001"
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Load Model
 # ─────────────────────────────────────────────────────────────────────────────
 def thai_tokenizer(text):
@@ -154,16 +182,10 @@ def load_system():
 model, vectorizer = load_system()
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Session State - REAL-TIME ONLY (No Mock Data)
+# Session State
 # ─────────────────────────────────────────────────────────────────────────────
 if "page" not in st.session_state:
     st.session_state.page = "analyze"
-
-if "history" not in st.session_state:
-    st.session_state.history = []  # Empty - only real data
-
-if "ticket_counter" not in st.session_state:
-    st.session_state.ticket_counter = 1
 
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
@@ -200,7 +222,9 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**สถานะระบบ**")
     st.success("✅ ระบบพร้อมใช้งาน")
-    st.markdown(f"📊 Ticket ที่วิเคราะห์: **{len(st.session_state.history)}**")
+    
+    history = load_history_from_csv()
+    st.markdown(f"📊 Ticket ที่วิเคราะห์: **{len(history)}**")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE 1: ANALYZE (Main Page)
@@ -247,8 +271,7 @@ if st.session_state.page == "analyze":
                     prediction = model.predict(test_vec)[0]
                 
                 now = datetime.datetime.now()
-                ticket_id = f"#T-{st.session_state.ticket_counter:04d}"
-                st.session_state.ticket_counter += 1
+                ticket_id = get_next_ticket_id()
                 st.session_state.last_result = {
                     "prediction": prediction,
                     "ticket_id": ticket_id,
@@ -258,7 +281,11 @@ if st.session_state.page == "analyze":
                     "full_msg": user_input,
                 }
                 
-                st.session_state.history.insert(0, {
+                # Load current history
+                history = load_history_from_csv()
+                
+                # Add new ticket
+                new_ticket = {
                     "id": ticket_id,
                     "msg": st.session_state.last_result["msg"],
                     "full_msg": user_input,
@@ -266,7 +293,12 @@ if st.session_state.page == "analyze":
                     "status": "open",
                     "time": now.strftime("%H:%M:%S"),
                     "date": now.strftime("%d/%m/%Y"),
-                })
+                }
+                
+                history.insert(0, new_ticket)
+                
+                # Save to CSV
+                save_history_to_csv(history)
                 
                 st.rerun()
     
@@ -286,13 +318,14 @@ if st.session_state.page == "analyze":
     st.markdown("---")
     
     # Recent Tickets
-    if st.session_state.history:
+    history = load_history_from_csv()
+    if history:
         st.markdown("## 📋 Ticket ที่วิเคราะห์")
         
         status_label = {"done": "✅ แก้ไขแล้ว", "open": "⏳ รอดำเนินการ", "review": "🔍 กำลังตรวจสอบ"}
         
         table_data = []
-        for t in st.session_state.history:
+        for t in history:
             status_txt = status_label.get(t["status"], "⏳ รอดำเนินการ")
             table_data.append({
                 "Ticket ID": t['id'],
@@ -314,7 +347,9 @@ elif st.session_state.page == "tickets":
     st.markdown("# 📋 รายการ Ticket ทั้งหมด")
     st.markdown("ดูรายละเอียดของ Ticket ทั้งหมดที่ได้รับการวิเคราะห์")
     
-    if not st.session_state.history:
+    history = load_history_from_csv()
+    
+    if not history:
         st.info("ยังไม่มีข้อมูล Ticket ที่วิเคราะห์")
     else:
         # Filter
@@ -323,7 +358,7 @@ elif st.session_state.page == "tickets":
             filter_status = st.selectbox("🔍 กรองตามสถานะ", ["ทั้งหมด", "รอดำเนินการ", "กำลังตรวจสอบ", "แก้ไขแล้ว"], key="filter_status")
         with col2:
             # Get unique categories from history
-            categories = sorted(set([t["category"] for t in st.session_state.history]))
+            categories = sorted(set([t["category"] for t in history]))
             filter_category = st.selectbox("📂 กรองตามหมวดหมู่", ["ทั้งหมด"] + categories, key="filter_category")
         with col3:
             sort_by = st.selectbox("📊 เรียงลำดับ", ["ล่าสุดก่อน", "เก่าที่สุดก่อน", "ID"], key="sort_by")
@@ -331,7 +366,7 @@ elif st.session_state.page == "tickets":
         st.markdown("---")
         
         # Filter logic
-        filtered_history = st.session_state.history.copy()
+        filtered_history = history.copy()
         
         status_map = {"รอดำเนินการ": "open", "กำลังตรวจสอบ": "review", "แก้ไขแล้ว": "done"}
         if filter_status != "ทั้งหมด":
@@ -379,7 +414,7 @@ elif st.session_state.page == "settings":
     with col1:
         st.text_input("ชื่อระบบ", value="G-Assist", disabled=True)
     with col2:
-        st.text_input("เวอร์ชัน", value="3.0.0", disabled=True)
+        st.text_input("เวอร์ชัน", value="3.1.0 (Shared DB)", disabled=True)
     
     st.toggle("เปิดใช้งานการแจ้งเตือน", value=True)
     st.toggle("เปิดใช้งานโหมดมืด", value=True)
@@ -389,7 +424,21 @@ elif st.session_state.page == "settings":
     st.markdown("## 🤖 ตั้งค่า AI Model")
     
     st.slider("ความเชื่อมั่นในการทำนาย (Confidence)", 0.0, 1.0, 0.75)
-    st.selectbox("เลือก Model", ["NLP v3.0 (ปัจจุบัน)", "NLP v2.1", "NLP v2.0"])
+    st.selectbox("เลือก Model", ["NLP v3.1 (ปัจจุบัน)", "NLP v3.0", "NLP v2.1"])
+    
+    st.markdown("---")
+    
+    st.markdown("## 💾 ข้อมูล")
+    
+    history = load_history_from_csv()
+    st.info(f"📊 จำนวน Ticket ทั้งหมด: **{len(history)}** รายการ")
+    st.info(f"📁 ไฟล์ฐานข้อมูล: **ticket_history.csv**")
+    
+    if st.button("🗑️ ล้างข้อมูลทั้งหมด", use_container_width=True):
+        if os.path.exists(CSV_FILE):
+            os.remove(CSV_FILE)
+            st.success("✅ ล้างข้อมูลเรียบร้อยแล้ว")
+            st.rerun()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE 4: GUIDE
@@ -423,9 +472,9 @@ elif st.session_state.page == "guide":
     
     A: ระบบรองรับภาษาไทยและภาษาอังกฤษ
     
-    **Q: ความแม่นยำของระบบเป็นเท่าไหร่?**
+    **Q: ข้อมูลจะหายไหมถ้าปิดเว็บ?**
     
-    A: ระบบมีความแม่นยำขึ้นอยู่กับคุณภาพของข้อมูลที่ป้อนเข้า
+    A: ไม่หายครับ ข้อมูลทั้งหมดจะถูกบันทึกลงในไฟล์ CSV และจะยังคงอยู่ถ้าคุณเปิดเว็บใหม่
     
     **Q: เวลาตอบสนองเป็นเท่าไหร่?**
     
@@ -439,5 +488,6 @@ elif st.session_state.page == "guide":
     st.markdown("""
     - **กรองข้อมูล:** ใช้ระบบ Filter ในหน้า "รายการ Ticket" เพื่อค้นหา Ticket ที่ต้องการ
     - **เรียงลำดับ:** ปรับการเรียงลำดับ Ticket ตามความต้องการ
+    - **แชร์ข้อมูล:** ถ้าคุณเปิดให้คนอื่นเข้าเว็บได้ ทุกคนจะเห็นข้อมูล Ticket ชุดเดียวกัน
     - **ตั้งค่าระบบ:** ปรับการตั้งค่าใน "ตั้งค่า" เพื่อเพิ่มประสิทธิภาพการใช้งาน
     """)
